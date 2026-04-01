@@ -1,0 +1,21 @@
+
+# The primary network interface
+# vim /etc/network/interfaces
+# iface inet static
+#     address 192.168.0.100
+#     netmask 255.255.255.0
+#     gateway 192.168.0.1
+#     dns-nasmeserver 1.1.1.1 8.8.8.8
+
+
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    wlp5s0:
+      dhcp4: no
+      addresses:
+        - 192.168.0.100/24
+      gateway4: 192.168.0.1
+      nameservers:
+        addresses: [1.1.1.1, 8.8.8.8]

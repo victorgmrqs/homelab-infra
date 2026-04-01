@@ -1,0 +1,83 @@
+---
+- name: Atualizar servidores do homelab
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Atualizar cache do APT
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+    
+    - name: Upgrade de todos os pacotes
+      apt:
+        upgrade: dist
+        autoremove: yes
+        autoclean: yes
+      register: upgrade_result
+    
+    - name: Verificar se reboot é necessário
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+    
+    - name: Mostrar pacotes atualizados
+      debug:
+        msg: "{{ upgrade_result.stdout_lines }}"
+      when: upgrade_result.stdout_lines is defined
+    
+    - name: Avisar sobre reboot necessário
+      debug:
+        msg: "⚠️  REBOOT NECESSÁRIO em {{ inventory_hostname }}"
+      when: reboot_required.stat.exists
+    
+    - name: Listar pacotes que causam necessidade de reboot
+      command: cat /var/run/reboot-required.pkgs
+      register: reboot_pkgs
+      when: reboot_required.stat.exists
+      changed_when: false
+    
+    - name: Mostrar pacotes que exigem reboot
+      debug:
+        msg: "{{ reboot_pkgs.stdout_lines }}"
+      when: reboot_required.stat.exists
+
+- name: Reiniciar servidores se necessário
+  hosts: all
+  become: yes
+  serial: 1  # Reinicia um por vez
+  
+  tasks:
+    - name: Verificar novamente se reboot é necessário
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_check
+    
+    - name: Reiniciar servidor
+      reboot:
+        msg: "Reboot iniciado pelo Ansible"
+        connect_timeout: 5
+        reboot_timeout: 300
+        pre_reboot_delay: 0
+        post_reboot_delay: 30
+        test_command: uptime
+      when: reboot_check.stat.exists
+    
+    - name: Aguardar servidor voltar online
+      wait_for_connection:
+        connect_timeout: 20
+        sleep: 5
+        delay: 5
+        timeout: 300
+      when: reboot_check.stat.exists
+    
+    - name: Verificar uptime após reboot
+      command: uptime
+      register: uptime_result
+      changed_when: false
+      when: reboot_check.stat.exists
+    
+    - name: Mostrar uptime
+      debug:
+        msg: "{{ uptime_result.stdout }}"
+      when: reboot_check.stat.exists

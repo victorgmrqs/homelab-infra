@@ -1,0 +1,195 @@
+---
+- name: Preparar servidores para K3s
+  hosts: all
+  become: yes
+  
+  tasks:
+    - name: Desabilitar swap
+      shell: swapoff -a
+      changed_when: false
+    
+    - name: Remover swap do fstab
+      lineinfile:
+        path: /etc/fstab
+        regexp: '.*swap.*'
+        state: absent
+    
+    - name: Carregar módulos do kernel necessários
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+    
+    - name: Persistir módulos do kernel
+      copy:
+        dest: /etc/modules-load.d/k3s.conf
+        content: |
+          overlay
+          br_netfilter
+    
+    - name: Configurar sysctl para K8s
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+      loop:
+        - { key: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+        - { key: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
+        - { key: 'net.ipv4.ip_forward', value: '1' }
+    
+    - name: Instalar dependências
+      apt:
+        name:
+          - curl
+          - open-iscsi
+          - nfs-common
+        state: present
+        update_cache: yes
+    
+    - name: Habilitar e iniciar iscsid
+      systemd:
+        name: iscsid
+        enabled: yes
+        state: started
+
+- name: Instalar K3s Server (Control Plane)
+  hosts: kube_main
+  become: yes
+  
+  vars:
+    k3s_server_ip: 192.168.10.103
+  
+  tasks:
+    - name: Verificar se K3s já está instalado
+      stat:
+        path: /usr/local/bin/k3s
+      register: k3s_installed
+    
+    - name: Instalar K3s server
+      shell: |
+        curl -sfL https://get.k3s.io | sh -s - server \
+          --node-ip={{ k3s_server_ip }} \
+          --disable traefik \
+          --write-kubeconfig-mode 644 \
+          --kube-apiserver-arg="service-node-port-range=80-32767"
+      when: not k3s_installed.stat.exists
+      register: k3s_install
+      environment:
+        INSTALL_K3S_CHANNEL: stable
+    
+    - name: Aguardar K3s iniciar
+      wait_for:
+        port: 6443
+        delay: 5
+        timeout: 120
+      when: k3s_install.changed
+    
+    - name: Obter node token
+      slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: node_token
+    
+    - name: Salvar token localmente
+      set_fact:
+              vowels = ('a', 'e', 'i', 'o', 'u')
+
+        k3s_token: "{{ node_token.content | b64decode | trim }}"
+    
+    - name: Criar diretório .kube para victor
+      file:
+        path: /home/victor/.kube
+        state: directory
+        owner: victor
+        group: victor
+        mode: '0755'
+    
+    - name: Copiar kubeconfig para victor
+      copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: /home/victor/.kube/config
+        remote_src: yes
+        owner: victor
+        group: victor
+        mode: '0600'
+    
+    - name: Ajustar server IP no kubeconfig
+      replace:
+        path: /home/victor/.kube/config
+        regexp: '127.0.0.1'
+        replace: "{{ k3s_server_ip }}"
+    
+    - name: Obter kubeconfig para máquina local
+      fetch:
+        src: /home/victor/.kube/config
+        dest: ~/.kube/homelab-config
+        flat: yes
+
+- name: Instalar K3s Agent (Workers)
+  hosts: kube_workers
+  become: yes
+  
+  vars:
+    k3s_server_ip: 192.168.10.103
+  
+  tasks:
+    - name: Verificar se K3s agent já está instalado
+      stat:
+        path: /usr/local/bin/k3s
+      register: k3s_agent_installed
+    
+    - name: Instalar K3s agent
+      shell: |
+        curl -sfL https://get.k3s.io | K3S_URL=https://{{ k3s_server_ip }}:6443 \
+          K3S_TOKEN="{{ hostvars['kube_main_01']['k3s_token'] }}" sh -s - agent \
+          --node-ip={{ ansible_host }}
+      when: not k3s_agent_installed.stat.exists
+      environment:
+        INSTALL_K3S_CHANNEL: stable
+
+- name: Configurar labels nos nós
+  hosts: kube_main
+  become_user: victor
+  
+  tasks:
+    - name: Aguardar todos os nós ficarem Ready
+      shell: kubectl get nodes --no-headers | grep -v Ready | wc -l
+      register: nodes_not_ready
+      until: nodes_not_ready.stdout == "0"
+      retries: 30
+      delay: 10
+      changed_when: false
+    
+    - name: Obter nome dos nós
+      shell: kubectl get nodes -o jsonpath='{.items[*].metadata.name}'
+      register: node_names
+      changed_when: false
+    
+    - name: Label do control plane
+      shell: kubectl label node {{ item }} node-role.kubernetes.io/control-plane=true --overwrite
+      loop: "{{ node_names.stdout.split() }}"
+      when: "'main' in item"
+      changed_when: false
+    
+    - name: Label do worker DNS
+      shell: kubectl label node {{ item }} node-role.kubernetes.io/worker=true node.homelab/role=dns --overwrite
+      loop: "{{ node_names.stdout.split() }}"
+      when: "'dns' in item"
+      changed_when: false
+    
+    - name: Label do worker DB
+      shell: kubectl label node {{ item }} node-role.kubernetes.io/worker=true node.homelab/role=database --overwrite
+      loop: "{{ node_names.stdout.split() }}"
+      when: "'db' in item"
+      changed_when: false
+    
+    - name: Mostrar status do cluster
+      shell: kubectl get nodes -o wide
+      register: cluster_status
+      changed_when: false
+    
+    - name: Exibir resultado
+      debug:
+        msg: "{{ cluster_status.stdout_lines }}"

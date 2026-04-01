@@ -1,0 +1,38 @@
+---
+- name: Configurar APT cache proxy
+  hosts: all
+  become: yes
+  
+  vars:
+    apt_cache_server: "192.168.10.2"  # Servidor com apt-cacher-ng
+    apt_cache_port: "3142"
+  
+  tasks:
+    - name: Instalar apt-cacher-ng no servidor cache
+      apt:
+        name: apt-cacher-ng
+        state: present
+        update_cache: yes
+      when: inventory_hostname == 'kube_worker_dns_01'
+    
+    - name: Habilitar apt-cacher-ng
+      systemd:
+        name: apt-cacher-ng
+        enabled: yes
+        state: started
+      when: inventory_hostname == 'kube_worker_dns_01'
+    
+    - name: Configurar clientes para usar o proxy
+      copy:
+        dest: /etc/apt/apt.conf.d/02proxy
+        content: |
+          Acquire::http::Proxy "http://{{ apt_cache_server }}:{{ apt_cache_port }}";
+          Acquire::https::Proxy "false";
+        owner: root
+        group: root
+        mode: '0644'
+      when: inventory_hostname != 'kube_worker_dns_01'
+    
+    - name: Testar cache (apt update)
+      apt:
+        update_cache: yes

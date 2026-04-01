@@ -1,0 +1,35 @@
+# Chaves SSH privadas
+*.pem
+*.key
+id_*
+!id_*.pub
+
+# Arquivos de senha
+*password*
+*secret*
+.vault_pass
+
+# Ansible retry files
+*.retry
+
+# Backups
+*.backup
+*.bak
+*~
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Temporários
+tmp/
+temp/

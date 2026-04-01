@@ -1,0 +1,44 @@
+---
+- name: SSH Hardening - Homelab
+  hosts: all
+  become: yes
+  vars:
+    ssh_port: 2816
+    
+  tasks:
+    - name: Backup do sshd_config original
+      copy:
+        src: /etc/ssh/sshd_config
+        dest: /etc/ssh/sshd_config.backup
+        remote_src: yes
+        force: no
+      
+    - name: Copiar nova configuração SSH
+      copy:
+        src: ../files/sshd_config
+        dest: /etc/ssh/sshd_config
+        owner: root
+        group: root
+        mode: '0644'
+        validate: '/usr/sbin/sshd -t -f %s'
+      notify: Restart SSH
+    
+    - name: Liberar porta SSH no UFW
+      ufw:
+        rule: allow
+        port: "{{ ssh_port }}"
+        proto: tcp
+      when: ansible_facts['distribution'] == 'Ubuntu'
+    
+    - name: Garantir que victor está no grupo sudo
+      user:
+        name: victor
+        groups: sudo
+        append: yes
+  
+  handlers:
+    - name: Restart SSH
+      systemd:
+        name: ssh.socket
+        state: restarted
+        daemon_reload: yes

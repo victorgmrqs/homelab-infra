@@ -1,0 +1,83 @@
+---
+- name: Replicar configuração Zsh/Powerlevel10k
+  hosts: all  # Apenas workers (master já tem)
+  become: yes
+  
+  tasks:
+    - name: Instalar Zsh e dependências
+      apt:
+        name:
+          - zsh
+          - git
+          - curl
+          - fonts-powerline
+        state: present
+        update_cache: yes
+    
+    - name: Verificar se Oh My Zsh já está instalado
+      stat:
+        path: /home/victor/.oh-my-zsh
+      register: oh_my_zsh_stat
+      become_user: victor
+    
+    - name: Instalar Oh My Zsh
+      shell: |
+        sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+      args:
+        creates: /home/victor/.oh-my-zsh
+      become_user: victor
+      when: not oh_my_zsh_stat.stat.exists
+    
+    - name: Clonar Powerlevel10k
+      git:
+        repo: https://github.com/romkatv/powerlevel10k.git
+        dest: /home/victor/.oh-my-zsh/custom/themes/powerlevel10k
+        depth: 1
+      become_user: victor
+    
+    - name: Instalar zsh-autosuggestions
+      git:
+        repo: https://github.com/zsh-users/zsh-autosuggestions
+        dest: /home/victor/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+        depth: 1
+      become_user: victor
+    
+    - name: Instalar zsh-syntax-highlighting
+      git:
+        repo: https://github.com/zsh-users/zsh-syntax-highlighting.git
+        dest: /home/victor/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+        depth: 1
+      become_user: victor
+    
+    - name: Copiar .zshrc do master
+      copy:
+        src: ../files/zshrc
+        dest: /home/victor/.zshrc
+        owner: victor
+        group: victor
+        mode: '0644'
+      become_user: victor
+    
+    - name: Copiar .p10k.zsh do master
+      copy:
+        src: ../files/p10k.zsh
+        dest: /home/victor/.p10k.zsh
+        owner: victor
+        group: victor
+        mode: '0644'
+      become_user: victor
+    
+    - name: Copiar .zsh_aliases se existir
+      copy:
+        src: ../files/zsh_aliases
+        dest: /home/victor/.zsh_aliases
+        owner: victor
+        group: victor
+        mode: '0644'
+      become_user: victor
+      ignore_errors: yes
+    
+    - name: Definir Zsh como shell padrão
+      user:
+        name: victor
+        shell: /usr/bin/zsh
