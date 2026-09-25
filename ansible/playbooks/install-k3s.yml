@@ -94,8 +94,6 @@
     
     - name: Salvar token localmente
       set_fact:
-              vowels = ('a', 'e', 'i', 'o', 'u')
-
         k3s_token: "{{ node_token.content | b64decode | trim }}"
     
     - name: Criar diretório .kube para victor
