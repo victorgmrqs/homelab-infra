@@ -73,7 +73,7 @@ Cluster Kubernetes (K3s) com 3 nós físicos rodando Ubuntu Server 24.04, config
 - **Shell:** Zsh + Oh My Zsh + Powerlevel10k
 - **DNS:** Pi-hole
 - **Cache:** apt-cacher-ng
-- **Segurança:** SSH hardening, UFW, Fail2ban
+- **Segurança:** SSH hardening, UFW, Fail2ban (via `fail2ban.yml`)
 - **Versionamento:** Git
 
 ## 📁 Estrutura do repositório
@@ -87,10 +87,8 @@ Cluster Kubernetes (K3s) com 3 nós físicos rodando Ubuntu Server 24.04, config
 ## 📚 Guias de Configuração
 
 - [Configuração Inicial](docs/setup/initial-setup.md)
-- [SSH Hardening](docs/setup/ssh-hardening.md)
-- [Ansible Setup](docs/setup/ansible-setup.md)
-- [Instalação K3s](docs/setup/k3s-installation.md)
-- [Troubleshooting](docs/setup/troubleshooting.md)
+- [Roadmap de evolução](docs/roadmap.md)
+- [Fase 1 — VPN](docs/fase-1-vpn.md)
 - [Integração WSL com Windows](docs/wsl-windows-integration.md) - Trabalhando com projetos no sistema de arquivos do Windows
 
 ## 🤖 Playbooks Ansible
@@ -100,8 +98,13 @@ cd ansible && ansible-playbook playbooks/<playbook>.yml
 ```
 Ou da raiz: `ansible-playbook -i ansible/inventory/hosts.ini ansible/playbooks/<playbook>.yml`
 
+Playbooks com `become` pedem a senha do sudo (`-K`).
+
 ### Disponíveis
+- `deploy-ssh-key.yml` - Instala a chave padrão (`key`) nos nós
 - `ssh-hardening.yml` - Hardening de SSH em todos os servidores
+- `fail2ban.yml` - Fail2ban com jail do sshd na porta 2816
+- `fix-netplan-cloud-init.yml` - Remove a config de rede do cloud-init (DHCP duplicado e Wi-Fi) do main e do db-01
 - `setup-zsh.yml` - Instalação e configuração do Zsh/Powerlevel10k
 - `install-k3s.yml` - Preparação e instalação do K3s (control plane + workers)
 - `setup-apt-cache.yml` - apt-cacher-ng no worker DNS

@@ -34,5 +34,7 @@ sudo reboot
 
 ## 4. Próximos passos
 
-- [Configurar SSH Hardening](ssh-hardening.md)
-- [Instalar Ansible](ansible-setup.md)
+- Instalar o Ansible na máquina de controle: `uv tool install ansible-core` e
+  `ansible-galaxy collection install ansible.posix community.general`
+- Autorizar a chave padrão: `ansible-playbook playbooks/deploy-ssh-key.yml`
+- SSH hardening e fail2ban: `ansible-playbook playbooks/ssh-hardening.yml playbooks/fail2ban.yml -K`
