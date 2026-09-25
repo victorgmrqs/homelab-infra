@@ -1,0 +1,68 @@
+---
+# O cloud-init gera /etc/netplan/50-cloud-init.yaml com DHCP (e, no kube-main-01, o Wi-Fi com
+# a senha em texto puro). Somado à config estática, o nó fica com IP/rota default duplicados.
+# Mantém só o arquivo estático (host_vars: netplan_static_file) e impede o cloud-init de regerar.
+#   ansible-playbook playbooks/fix-netplan-cloud-init.yml -K
+- name: Remover a config de rede gerada pelo cloud-init
+  hosts: kube_main_01:kube_worker_db_01
+  become: yes
+  serial: 1
+
+  tasks:
+    - name: Ler a configuração estática
+      slurp:
+        src: "/etc/netplan/{{ netplan_static_file }}"
+      register: netcfg
+
+    - name: Garantir que a config estática tem o IP do nó e não usa DHCP antes de mexer
+      assert:
+        that:
+          - "ansible_host in (netcfg.content | b64decode)"
+          - "'dhcp4: true' not in (netcfg.content | b64decode)"
+          - "'dhcp4: yes' not in (netcfg.content | b64decode)"
+        fail_msg: "{{ netplan_static_file }} não parece ser a config estática esperada; abortando."
+
+    - name: Impedir o cloud-init de regerar a config de rede
+      copy:
+        dest: /etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+        content: "network: {config: disabled}\n"
+        mode: '0644'
+
+    - name: Remover 50-cloud-init.yaml (sem backup, pode conter a senha do Wi-Fi)
+      file:
+        path: /etc/netplan/50-cloud-init.yaml
+        state: absent
+
+    - name: Validar netplan
+      command: netplan generate
+      changed_when: false
+
+    - name: Aplicar netplan (em background, para não derrubar a sessão SSH no meio)
+      shell: nohup sh -c 'sleep 2; netplan apply' >/dev/null 2>&1 &
+      async: 1
+      poll: 0
+
+    - name: Aguardar o host voltar
+      wait_for_connection:
+        delay: 10
+        timeout: 120
+
+    - name: Conferir rotas default
+      command: ip -4 route show default
+      register: routes
+      changed_when: false
+
+    - name: Garantir uma única rota default
+      assert:
+        that: routes.stdout_lines | length == 1
+        fail_msg: "Ainda há mais de uma rota default: {{ routes.stdout_lines }}"
+
+    - name: Procurar credenciais de Wi-Fi remanescentes
+      shell: grep -rl 'password' /etc/netplan /run/netplan 2>/dev/null || true
+      register: leftovers
+      changed_when: false
+
+    - name: Garantir que não sobrou senha de Wi-Fi em disco
+      assert:
+        that: leftovers.stdout == ""
+        fail_msg: "Ainda há senha em: {{ leftovers.stdout_lines }}"

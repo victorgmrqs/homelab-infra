@@ -1,0 +1,2 @@
+---
+netplan_static_file: 01-netcfg.yaml

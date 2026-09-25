@@ -1,0 +1,45 @@
+---
+- name: Fail2ban - proteção do SSH
+  hosts: all
+  become: yes
+  vars:
+    ssh_port: 2816
+
+  tasks:
+    - name: Instalar fail2ban
+      apt:
+        name: fail2ban
+        state: present
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Configurar jail do sshd
+      copy:
+        dest: /etc/fail2ban/jail.d/sshd.local
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [DEFAULT]
+          ignoreip = 127.0.0.1/8 ::1 192.168.10.0/24 100.64.0.0/10
+          bantime  = 1h
+          findtime = 10m
+          maxretry = 5
+          backend  = systemd
+
+          [sshd]
+          enabled = true
+          port    = {{ ssh_port }}
+      notify: Restart fail2ban
+
+    - name: Habilitar e iniciar fail2ban
+      systemd:
+        name: fail2ban
+        enabled: yes
+        state: started
+
+  handlers:
+    - name: Restart fail2ban
+      systemd:
+        name: fail2ban
+        state: restarted

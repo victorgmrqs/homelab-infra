@@ -1,0 +1,3 @@
+---
+# Arquivo do /etc/netplan com a config estática que deve permanecer
+netplan_static_file: dns-config.yaml
