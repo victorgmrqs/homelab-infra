@@ -1,0 +1,20 @@
+---
+# Instala a chave padrão (arquivo `key` na raiz do repo) e, opcionalmente, remove as antigas.
+# Primeira execução, ainda com a chave RSA antiga:
+#   ansible-playbook playbooks/deploy-ssh-key.yml -e ansible_ssh_private_key_file=~/.ssh/id_homelab_rsa
+# Depois de validar o acesso com a nova chave, remova as demais:
+#   ansible-playbook playbooks/deploy-ssh-key.yml -e exclusive=true
+- name: Padronizar chave SSH do homelab
+  hosts: all
+  gather_facts: false
+
+  vars:
+    exclusive: false
+
+  tasks:
+    - name: Autorizar a chave padrão
+      ansible.posix.authorized_key:
+        user: "{{ ansible_user }}"
+        key: "{{ homelab_ssh_pubkey }}"
+        exclusive: "{{ exclusive | bool }}"
+        state: present
